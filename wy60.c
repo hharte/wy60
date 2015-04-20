@@ -18,6 +18,8 @@
 
 #include "wy60.h"
 
+extern int killpg(int pgrp, int sig);
+
 #undef DEBUG_LOG_SESSION
 #undef DEBUG_LOG_NATIVE
 #undef DEBUG_LOG_HOST
@@ -5330,6 +5332,7 @@ static int emulator(int pid, int pty, int *status) {
 static int forkPty(int *fd, char *name) {
   int            master, slave, pid;
   struct winsize win;
+  char myptsname[100];
 
   /* Try to let the standard C library open a pty pair for us                */
 #if HAVE_GRANTPT
@@ -5341,7 +5344,11 @@ static int forkPty(int *fd, char *name) {
   if (master >= 0) {
     grantpt(master);
     unlockpt(master);
-    strcpy(name, ptsname(master));
+    if (ptsname_r(master, myptsname, sizeof(myptsname)) != 0) {
+	printf("ptsname_r() failed\n");
+	exit(-1);
+    }
+    strcpy(name, myptsname);
     slave            = open(name, O_RDWR|O_NOCTTY);
     if (slave < 0) {
       close(master);
@@ -5655,11 +5662,13 @@ static int launchChild(char *argv[], int *pty, char *ptyName) {
 
 
 static void signalHandler(int signalNumber) {
-  if (signalNumber != SIGCHLD)
-    if (useAuxiliarySignalHandler)
+  if (signalNumber != SIGCHLD) {
+    if (useAuxiliarySignalHandler) {
       siglongjmp(auxiliaryJumpBuffer, signalNumber);
-    else
+    } else {
       siglongjmp(mainJumpBuffer, signalNumber);
+    }
+  }
   return;
 }
 
@@ -6143,7 +6152,7 @@ static void parseConfigurationFile(const char *fileName) {
 static void parseConfigurationFiles(void) {
   char *home;
 
-  parseConfigurationFile(ETCDIR"/wy60.rc");
+// hharte   parseConfigurationFile(ETCDIR"/wy60.rc");
   parseConfigurationFile("/etc/wy60.rc");
   home                 = getenv("HOME");
   if (home != NULL) {
